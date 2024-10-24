@@ -23,6 +23,7 @@ using System.Globalization;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using ProxyLib.Proxy.EventArgs;
 using ProxyLib.Proxy.Exceptions;
 
@@ -244,7 +245,7 @@ namespace ProxyLib.Proxy
         /// to make a pass through connection to the specified destination host on the specified
         /// port.  
         /// </remarks>
-        public TcpClient CreateConnection(string destinationHost, int destinationPort)
+        public async Task<TcpClient> CreateConnection(string destinationHost, int destinationPort, CancellationToken cancellationToken)
         {
             try
             {
@@ -263,7 +264,7 @@ namespace ProxyLib.Proxy
                     _tcpClient.ReceiveTimeout = _receiveTimeout;
 
                     // attempt to open the connection
-                    _tcpClient.Connect(_proxyHost, _proxyPort);
+                    await _tcpClient.ConnectAsync(_proxyHost, _proxyPort);
                 }
                 else
                 {
@@ -271,7 +272,7 @@ namespace ProxyLib.Proxy
                 }
 
                 //  send connection command to proxy host for the specified destination host and port
-                SendConnectionCommand(destinationHost, destinationPort);
+                await SendConnectionCommand(destinationHost, destinationPort,cancellationToken);
 
                 // remove the private reference to the tcp client so the proxy object does not keep it
                 // return the open proxied tcp client object to the caller for normal use
@@ -286,7 +287,7 @@ namespace ProxyLib.Proxy
         }
 
 
-        private void SendConnectionCommand(string host, int port)
+        private async Task SendConnectionCommand(string host, int port, CancellationToken cancellationToken)
         {
             NetworkStream stream = _tcpClient.GetStream();
 
@@ -295,10 +296,10 @@ namespace ProxyLib.Proxy
             byte[] request = ASCIIEncoding.ASCII.GetBytes(connectCmd);
 
             // send the connect request
-            stream.Write(request, 0, request.Length);
+            await stream.WriteAsync(request, 0, request.Length, cancellationToken);
 
             // wait for the proxy server to respond
-            WaitForData(stream);
+            await WaitForData(stream, cancellationToken);
 
             // PROXY SERVER RESPONSE
             // =======================================================================
@@ -315,7 +316,7 @@ namespace ProxyLib.Proxy
 
             do
             {
-                bytes = stream.Read(response, 0, _tcpClient.ReceiveBufferSize);
+                bytes = await stream.ReadAsync(response, 0, _tcpClient.ReceiveBufferSize, cancellationToken);
                 total += bytes;
                 sbuilder.Append(System.Text.ASCIIEncoding.UTF8.GetString(response, 0, bytes));
             } while (stream.DataAvailable);
@@ -384,12 +385,12 @@ namespace ProxyLib.Proxy
             throw new ProxyException(msg);
         }
 
-        private void WaitForData(NetworkStream stream)
+        private async Task WaitForData(NetworkStream stream, CancellationToken cancellationToken)
         {
             int sleepTime = 0;
             while (!stream.DataAvailable)
             {
-                Thread.Sleep(WAIT_FOR_DATA_INTERVAL);
+                await Task.Delay(WAIT_FOR_DATA_INTERVAL, cancellationToken);
                 sleepTime += WAIT_FOR_DATA_INTERVAL;
                 if (sleepTime > WAIT_FOR_DATA_TIMEOUT)
                     throw new ProxyException(String.Format("A timeout while waiting for the proxy server at {0} on port {1} to respond.", Utils.GetHost(_tcpClient), Utils.GetPort(_tcpClient)));
@@ -513,12 +514,12 @@ namespace ProxyLib.Proxy
             _asyncWorker.RunWorkerAsync(args);
         }
 
-        private void CreateConnectionAsync_DoWork(object sender, DoWorkEventArgs e)
+        private async void CreateConnectionAsync_DoWork(object sender, DoWorkEventArgs e)
         {
             try
             {
                 Object[] args = (Object[])e.Argument;
-                e.Result = CreateConnection((string)args[0], (int)args[1]);
+                e.Result =await CreateConnection((string)args[0], (int)args[1],new CancellationToken());
             }
             catch (Exception ex)
             {

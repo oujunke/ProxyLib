@@ -19,6 +19,8 @@
 
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ProxyLib.Proxy
 {
@@ -107,7 +109,7 @@ namespace ProxyLib.Proxy
         /// Socks4a extensions which allow the proxy client to optionally command the proxy server to resolve the 
         /// destination host IP address. 
         /// </remarks>
-        internal override void SendCommand(NetworkStream proxy, byte command, string destinationHost, int destinationPort, string userId)
+        internal override async Task SendCommand(NetworkStream proxy, byte command, string destinationHost, int destinationPort, string userId, CancellationToken cancellationToken)
         {
             // PROXY SERVER REQUEST
             //Please read SOCKS4.protocol first for an description of the version 4
@@ -167,10 +169,10 @@ namespace ProxyLib.Proxy
             request[9 + userIdBytes.Length + hostBytes.Length] = 0x00;  // null (byte with all zeros) terminator for userId
 
             // send the connect request
-            proxy.Write(request, 0, request.Length);
+            await proxy.WriteAsync(request, 0, request.Length, cancellationToken);
 
             // wait for the proxy server to send a response
-            base.WaitForData(proxy);
+            await base.WaitForData(proxy, cancellationToken);
 
             // PROXY SERVER RESPONSE
             // The SOCKS server checks to see whether such a request should be granted
@@ -208,7 +210,7 @@ namespace ProxyLib.Proxy
             byte[] response = new byte[8];
 
             // read the resonse from the network stream
-            proxy.Read(response, 0, 8);
+            await proxy.ReadAsync(response, 0, 8, cancellationToken);
 
             //  evaluate the reply code for an error condition
             if (response[1] != SOCKS4_CMD_REPLY_REQUEST_GRANTED)

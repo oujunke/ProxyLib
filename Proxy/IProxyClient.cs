@@ -19,6 +19,8 @@
 
 using System;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using ProxyLib.Proxy.EventArgs;
 
 namespace ProxyLib.Proxy
@@ -77,7 +79,7 @@ namespace ProxyLib.Proxy
         /// to make a pass through connection to the specified destination host on the specified
         /// port.  
         /// </remarks>
-        TcpClient CreateConnection(string destinationHost, int destinationPort);
+        Task<TcpClient> CreateConnection(string destinationHost, int destinationPort, CancellationToken cancellation);
 
         /// <summary>
         /// Asynchronously creates a remote TCP connection through a proxy server to the destination host on the destination port.

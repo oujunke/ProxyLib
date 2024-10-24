@@ -24,6 +24,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using ProxyLib.Proxy.EventArgs;
 using ProxyLib.Proxy.Exceptions;
 
@@ -102,11 +103,11 @@ namespace ProxyLib.Proxy
         /// </summary>
         /// <param name="proxyHost">Host name or IP address of the proxy server.</param>
         /// <param name="proxyUserId">Proxy user identification information.</param>
-        public Socks4ProxyClient(string proxyHost, string proxyUserId) 
+        public Socks4ProxyClient(string proxyHost, string proxyUserId)
         {
             if (String.IsNullOrEmpty(proxyHost))
                 throw new ArgumentNullException("proxyHost");
-            
+
             if (proxyUserId == null)
                 throw new ArgumentNullException("proxyUserId");
 
@@ -128,10 +129,10 @@ namespace ProxyLib.Proxy
 
             if (proxyPort <= 0 || proxyPort > 65535)
                 throw new ArgumentOutOfRangeException("proxyPort", "port must be greater than zero and less than 65535");
-            
+
             if (proxyUserId == null)
                 throw new ArgumentNullException("proxyUserId");
-            
+
             _proxyHost = proxyHost;
             _proxyPort = proxyPort;
             _proxyUserId = proxyUserId;
@@ -145,7 +146,7 @@ namespace ProxyLib.Proxy
         {
             if (String.IsNullOrEmpty(proxyHost))
                 throw new ArgumentNullException("proxyHost");
-            
+
             _proxyHost = proxyHost;
             _proxyPort = SOCKS_PROXY_DEFAULT_PORT;
         }
@@ -240,7 +241,7 @@ namespace ProxyLib.Proxy
         /// to make a pass through connection to the specified destination host on the specified
         /// port.  
         /// </remarks>
-        public TcpClient CreateConnection(string destinationHost, int destinationPort)
+        public async Task<TcpClient> CreateConnection(string destinationHost, int destinationPort, CancellationToken cancellationToken)
         {
             if (String.IsNullOrEmpty(destinationHost))
                 throw new ArgumentNullException("destinationHost");
@@ -265,7 +266,7 @@ namespace ProxyLib.Proxy
                     _tcpClient.ReceiveTimeout = _receiveTimeout;
 
                     // attempt to open the connection
-                    _tcpClient.Connect(_proxyHost, _proxyPort);
+                    await _tcpClient.ConnectAsync(_proxyHost, _proxyPort);
                 }
                 else
                 {
@@ -273,7 +274,7 @@ namespace ProxyLib.Proxy
                 }
 
                 //  send connection command to proxy host for the specified destination host and port
-                SendCommand(_tcpClient.GetStream(), SOCKS4_CMD_CONNECT, destinationHost, destinationPort, _proxyUserId);
+                await SendCommand(_tcpClient.GetStream(), SOCKS4_CMD_CONNECT, destinationHost, destinationPort, _proxyUserId,cancellationToken);
 
                 // remove the private reference to the tcp client so the proxy object does not keep it
                 // return the open proxied tcp client object to the caller for normal use
@@ -296,7 +297,7 @@ namespace ProxyLib.Proxy
         /// <param name="destinationHost">Destination host name or IP address.</param>
         /// <param name="destinationPort">Destination port number</param>
         /// <param name="userId">IDENTD user ID value.</param>
-        internal virtual void SendCommand(NetworkStream proxy, byte command, string destinationHost, int destinationPort, string userId)
+        internal virtual async Task SendCommand(NetworkStream proxy, byte command, string destinationHost, int destinationPort, string userId, CancellationToken cancellationToken)
         {
             // PROXY SERVER REQUEST
             // The client connects to the SOCKS server and sends a CONNECT request when
@@ -320,7 +321,7 @@ namespace ProxyLib.Proxy
 
             byte[] destIp = GetIPAddressBytes(destinationHost);
             byte[] destPort = GetDestinationPortBytes(destinationPort);
-            byte[] userIdBytes = ASCIIEncoding.ASCII.GetBytes(userId);   
+            byte[] userIdBytes = ASCIIEncoding.ASCII.GetBytes(userId);
             byte[] request = new byte[9 + userIdBytes.Length];
 
             //  set the bits on the request byte array
@@ -332,10 +333,10 @@ namespace ProxyLib.Proxy
             request[8 + userIdBytes.Length] = 0x00;  // null (byte with all zeros) terminator for userId
 
             // send the connect request
-            proxy.Write(request, 0, request.Length);
+            await proxy.WriteAsync(request, 0, request.Length,cancellationToken);
 
             // wait for the proxy server to respond
-            WaitForData(proxy);
+            await WaitForData(proxy, cancellationToken);
 
             // PROXY SERVER RESPONSE
             // The SOCKS server checks to see whether such a request should be granted
@@ -371,9 +372,9 @@ namespace ProxyLib.Proxy
 
             // create an 8 byte response array  
             byte[] response = new byte[8];
-            
+
             // read the resonse from the network stream
-            proxy.Read(response, 0, 8);
+            await proxy.ReadAsync(response, 0, 8,cancellationToken);
 
             //  evaluate the reply code for an error condition
             if (response[1] != SOCKS4_CMD_REPLY_REQUEST_GRANTED)
@@ -401,9 +402,9 @@ namespace ProxyLib.Proxy
                     throw new ProxyException(String.Format(CultureInfo.InvariantCulture, "A error occurred while attempting to DNS resolve the host name {0}.", destinationHost), ex);
                 }
             }
-           
+
             // return address bytes
-            return ipAddr.GetAddressBytes();            
+            return ipAddr.GetAddressBytes();
         }
 
         /// <summary>
@@ -429,16 +430,16 @@ namespace ProxyLib.Proxy
         {
 
             if (response == null)
-                throw new ArgumentNullException("response"); 
+                throw new ArgumentNullException("response");
 
             //  extract the reply code
             byte replyCode = response[1];
-           
+
             //  extract the ip v4 address (4 bytes)
             byte[] ipBytes = new byte[4];
             for (int i = 0; i < 4; i++)
                 ipBytes[i] = response[i + 4];
-            
+
             //  convert the ip address to an IPAddress object
             IPAddress ipAddr = new IPAddress(ipBytes);
 
@@ -458,7 +459,7 @@ namespace ProxyLib.Proxy
                 case SOCKS4_CMD_REPLY_REQUEST_REJECTED_CANNOT_CONNECT_TO_IDENTD:
                     proxyErrorText = "connection request was rejected because SOCKS destination cannot connect to identd on the client";
                     break;
-                case SOCKS4_CMD_REPLY_REQUEST_REJECTED_DIFFERENT_IDENTD: 
+                case SOCKS4_CMD_REPLY_REQUEST_REJECTED_DIFFERENT_IDENTD:
                     proxyErrorText = "connection request rejected because the client program and identd report different user-ids";
                     break;
                 default:
@@ -473,12 +474,12 @@ namespace ProxyLib.Proxy
             throw new ProxyException(exceptionMsg);
         }
 
-        internal void WaitForData(NetworkStream stream)
+        internal async Task WaitForData(NetworkStream stream, CancellationToken cancellationToken)
         {
             int sleepTime = 0;
             while (!stream.DataAvailable)
             {
-                Thread.Sleep(WAIT_FOR_DATA_INTERVAL);
+                await Task.Delay(WAIT_FOR_DATA_INTERVAL, cancellationToken);
                 sleepTime += WAIT_FOR_DATA_INTERVAL;
                 if (sleepTime > WAIT_FOR_DATA_TIMEOUT)
                     throw new ProxyException("A timeout while waiting for the proxy destination to respond.");
@@ -486,7 +487,7 @@ namespace ProxyLib.Proxy
         }
 
 
-#region "Async Methods"
+        #region "Async Methods"
 
         private BackgroundWorker _asyncWorker;
         private Exception _asyncException;
@@ -575,7 +576,7 @@ namespace ProxyLib.Proxy
             try
             {
                 Object[] args = (Object[])e.Argument;
-                e.Result = CreateConnection((string)args[0], (int)args[1]);
+                e.Result = CreateConnection((string)args[0], (int)args[1],new CancellationToken());
             }
             catch (Exception ex)
             {
@@ -588,8 +589,8 @@ namespace ProxyLib.Proxy
             if (CreateConnectionAsyncCompleted != null)
                 CreateConnectionAsyncCompleted(this, new CreateConnectionAsyncCompletedEventArgs(_asyncException, _asyncCancelled, (TcpClient)e.Result));
         }
-        
-#endregion
+
+        #endregion
 
     }
 
