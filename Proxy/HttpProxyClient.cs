@@ -309,6 +309,10 @@ namespace ProxyLib.Proxy
             //<CR><LF>    // Last Empty Line
 
             // create an byte response array  
+            if (_tcpClient == null)
+            {
+                return;
+            }
             byte[] response = new byte[_tcpClient.ReceiveBufferSize];
             StringBuilder sbuilder = new StringBuilder();
             int bytes = 0;

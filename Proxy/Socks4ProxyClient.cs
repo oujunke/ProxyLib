@@ -571,12 +571,12 @@ namespace ProxyLib.Proxy
             _asyncWorker.RunWorkerAsync(args);
         }
 
-        private void CreateConnectionAsync_DoWork(object sender, DoWorkEventArgs e)
+        private async void CreateConnectionAsync_DoWork(object sender, DoWorkEventArgs e)
         {
             try
             {
                 Object[] args = (Object[])e.Argument;
-                e.Result = CreateConnection((string)args[0], (int)args[1],new CancellationToken());
+                e.Result =await CreateConnection((string)args[0], (int)args[1],new CancellationToken());
             }
             catch (Exception ex)
             {
