@@ -515,6 +515,8 @@ namespace ProxyLib.Proxy
             get { return _asyncCancelled; }
         }
 
+        public Func<string> HeadStringFunc { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+
         /// <summary>
         /// Cancels any asychronous operation that is currently active.
         /// </summary>

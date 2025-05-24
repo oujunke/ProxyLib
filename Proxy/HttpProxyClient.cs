@@ -53,8 +53,8 @@ namespace ProxyLib.Proxy
         private TcpClient _tcpClientCached;
 
         private const int HTTP_PROXY_DEFAULT_PORT = 8080;
-        private const string HTTP_PROXY_CONNECT_CMD = "CONNECT {0}:{1} HTTP/1.0\r\nHOST: {0}:{1}\r\n\r\n";
-        private const string HTTP_PROXY_AUTHENTICATE_CMD = "CONNECT {0}:{1} HTTP/1.0\r\nHOST: {0}:{1}\r\nProxy-Authorization: Basic {2}\r\n\r\n";
+        private const string HTTP_PROXY_CONNECT_CMD = "CONNECT {0}:{1} HTTP/1.0\r\n{2}HOST: {0}:{1}\r\n\r\n";
+        private const string HTTP_PROXY_AUTHENTICATE_CMD = "CONNECT {0}:{1} HTTP/1.0\r\n{3}HOST: {0}:{1}\r\nProxy-Authorization: Basic {2}\r\n\r\n";
 
         private const int WAIT_FOR_DATA_INTERVAL = 50; // 50 ms
         private const int WAIT_FOR_DATA_TIMEOUT = 15000; // 15 seconds
@@ -335,6 +335,11 @@ namespace ProxyLib.Proxy
         private string CreateCommandString(string host, int port)
         {
             string connectCmd;
+            var head = HeadStringFunc?.Invoke() ?? string.Empty;
+            if (head.Length > 0 && !head.EndsWith("\r\n"))
+            {
+                head += "\r\n";
+            }
             if (!string.IsNullOrEmpty(_proxyUsername))
             {
                 //  gets the user/pass into base64 encoded string in the form of [username]:[password]
@@ -349,7 +354,7 @@ namespace ProxyLib.Proxy
                 //                        concatenated string
                 //[... other HTTP header lines ending with <CR><LF> if required]>
                 //<CR><LF>    // Last Empty Line
-                connectCmd = String.Format(CultureInfo.InvariantCulture, HTTP_PROXY_AUTHENTICATE_CMD, host, port.ToString(CultureInfo.InvariantCulture), auth);
+                connectCmd = String.Format(CultureInfo.InvariantCulture, HTTP_PROXY_AUTHENTICATE_CMD, host, port.ToString(CultureInfo.InvariantCulture), auth, head);
             }
             else
             {
@@ -359,7 +364,8 @@ namespace ProxyLib.Proxy
                 //HOST starksoft.com:443<CR><LF>
                 //[... other HTTP header lines ending with <CR><LF> if required]>
                 //<CR><LF>    // Last Empty Line
-                connectCmd = String.Format(CultureInfo.InvariantCulture, HTTP_PROXY_CONNECT_CMD, host, port.ToString(CultureInfo.InvariantCulture));
+                
+                connectCmd = String.Format(CultureInfo.InvariantCulture, HTTP_PROXY_CONNECT_CMD, host, port.ToString(CultureInfo.InvariantCulture), head);
             }
 
             return connectCmd;
@@ -461,6 +467,8 @@ namespace ProxyLib.Proxy
         {
             get { return _asyncCancelled; }
         }
+
+        public Func<string> HeadStringFunc { get ; set ; }
 
         /// <summary>
         /// Cancels any asychronous operation that is currently active.

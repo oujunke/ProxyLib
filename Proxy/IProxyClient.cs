@@ -64,7 +64,11 @@ namespace ProxyLib.Proxy
         /// Gets or set the TcpClient object if one was specified in the constructor.
         /// </summary>
         TcpClient TcpClient { get; set; }
+        /// <summary>
+        /// 请求头创建函数
+        /// </summary>
 
+        Func<string> HeadStringFunc { get; set; }
         /// <summary>
         /// Creates a remote TCP connection through a proxy server to the destination host on the destination port.
         /// </summary>
